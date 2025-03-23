@@ -1,5 +1,9 @@
+import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+
+# Загружаем токен из переменной окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # Общий список
 default_checklist = [
@@ -107,16 +111,19 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data[uid] = {"marked": set(), "custom": []}
     await update.message.reply_text("🔁 Твой список сброшен.")
 
-# 🔑 ЗАМЕНИ ТОКЕН НИЖЕ НА ТОТ, ЧТО ДАЛ BotFather
-app = ApplicationBuilder().token(BOT_TOKEN).build()
+# Запуск приложения с токеном из переменной окружения
+if BOT_TOKEN:
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("checklist", checklist))
-app.add_handler(CommandHandler("mylist", mylist))
-app.add_handler(CommandHandler("mark", mark))
-app.add_handler(CommandHandler("unmark", unmark))
-app.add_handler(CommandHandler("add", add))
-app.add_handler(CommandHandler("remove", remove))
-app.add_handler(CommandHandler("reset", reset))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("checklist", checklist))
+    app.add_handler(CommandHandler("mylist", mylist))
+    app.add_handler(CommandHandler("mark", mark))
+    app.add_handler(CommandHandler("unmark", unmark))
+    app.add_handler(CommandHandler("add", add))
+    app.add_handler(CommandHandler("remove", remove))
+    app.add_handler(CommandHandler("reset", reset))
 
-app.run_polling()
+    app.run_polling()
+else:
+    print("❗ Ошибка: Переменная BOT_TOKEN не установлена.")
