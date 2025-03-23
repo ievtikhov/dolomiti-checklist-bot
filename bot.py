@@ -123,6 +123,11 @@ if BOT_TOKEN:
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("remove", remove))
     app.add_handler(CommandHandler("reset", reset))
+    
+from keep_alive import keep_alive
+
+# Запуск мини-сервера Replit
+keep_alive()
 
     app.run_polling()
 else:
