@@ -1,11 +1,16 @@
 import os
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    ContextTypes
+)
+from keep_alive import keep_alive
 
-# Загружаем токен из переменной окружения
+keep_alive()
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Общий список
+# Общий чек-лист
 default_checklist = [
     "Паспорт / ID", "Страховка", "Трекинговые ботинки", "Термобельё", "Флиска",
     "Ветровка", "Очки / кепка / шапка", "Бутылка воды", "Перекус",
@@ -13,122 +18,59 @@ default_checklist = [
     "Аптечка", "Солнцезащитный крем", "Оффлайн-карты"
 ]
 
-# Персональные данные пользователей
+# Храним данные по пользователям
 user_data = {}
 
 def get_user_data(user_id):
     if user_id not in user_data:
         user_data[user_id] = {
-            "marked": set(),
-            "custom": []
+            "marked": set()
         }
     return user_data[user_id]
+
+def generate_checklist_markup(user_id):
+    data = get_user_data(user_id)
+    buttons = []
+
+    for i, item in enumerate(default_checklist, start=1):
+        checked = "✅" if i in data["marked"] else "🔲"
+        buttons.append([
+            InlineKeyboardButton(f"{checked} {item}", callback_data=str(i))
+        ])
+
+    return InlineKeyboardMarkup(buttons)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Привет! Я бот-чеклист для Доломитов 🏔️\n\n"
-        "Команды:\n"
-        "/checklist — общий список\n"
-        "/mylist — твой персональный список\n"
-        "/mark [номер] — отметить пункт\n"
-        "/unmark [номер] — снять отметку\n"
-        "/add [текст] — добавить свою вещь\n"
-        "/remove [номер] — удалить свою вещь\n"
-        "/reset — сбросить список"
+        "Нажми /menu чтобы открыть интерактивный список."
     )
 
-async def checklist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = "📋 Общий чек-лист:\n\n"
-    for i, item in enumerate(default_checklist, start=1):
-        msg += f"{i}. {item}\n"
-    await update.message.reply_text(msg)
-
-async def mylist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    data = get_user_data(uid)
-    full_list = default_checklist + data["custom"]
+    markup = generate_checklist_markup(uid)
+    await update.message.reply_text("🧳 Твой интерактивный чек-лист:", reply_markup=markup)
 
-    msg = "🧳 Твой чек-лист:\n\n"
-    if not full_list:
-        msg += "— пока пусто"
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    uid = query.from_user.id
+    data = get_user_data(uid)
+    item_num = int(query.data)
+
+    if item_num in data["marked"]:
+        data["marked"].remove(item_num)
     else:
-        for i, item in enumerate(full_list, start=1):
-            mark = "✅" if i in data["marked"] else "🔲"
-            msg += f"{mark} {i}. {item}\n"
-    await update.message.reply_text(msg)
+        data["marked"].add(item_num)
 
-async def mark(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    data = get_user_data(uid)
-    full_list = default_checklist + data["custom"]
-    try:
-        num = int(context.args[0])
-        if 1 <= num <= len(full_list):
-            data["marked"].add(num)
-            await update.message.reply_text(f"✅ Отметил: {full_list[num-1]}")
-        else:
-            await update.message.reply_text("❗ Неверный номер.")
-    except:
-        await update.message.reply_text("❗ Используй: /mark [номер]")
+    new_markup = generate_checklist_markup(uid)
+    await query.edit_message_reply_markup(reply_markup=new_markup)
 
-async def unmark(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    data = get_user_data(uid)
-    try:
-        num = int(context.args[0])
-        data["marked"].discard(num)
-        await update.message.reply_text("❎ Снял отметку.")
-    except:
-        await update.message.reply_text("❗ Используй: /unmark [номер]")
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    data = get_user_data(uid)
-    text = ' '.join(context.args)
-    if text:
-        data["custom"].append(text)
-        await update.message.reply_text(f"➕ Добавлено в твой список: {text}")
-    else:
-        await update.message.reply_text("❗ Используй: /add [текст]")
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("menu", menu))
+app.add_handler(CallbackQueryHandler(button_handler))
 
-async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    data = get_user_data(uid)
-    try:
-        num = int(context.args[0])
-        index = num - len(default_checklist) - 1
-        if 0 <= index < len(data["custom"]):
-            removed = data["custom"].pop(index)
-            data["marked"].discard(num)
-            await update.message.reply_text(f"➖ Удалено: {removed}")
-        else:
-            await update.message.reply_text("❗ Можно удалить только свои пункты.")
-    except:
-        await update.message.reply_text("❗ Используй: /remove [номер]")
-
-async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    user_data[uid] = {"marked": set(), "custom": []}
-    await update.message.reply_text("🔁 Твой список сброшен.")
-
-# Запуск приложения с токеном из переменной окружения
-if BOT_TOKEN:
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("checklist", checklist))
-    app.add_handler(CommandHandler("mylist", mylist))
-    app.add_handler(CommandHandler("mark", mark))
-    app.add_handler(CommandHandler("unmark", unmark))
-    app.add_handler(CommandHandler("add", add))
-    app.add_handler(CommandHandler("remove", remove))
-    app.add_handler(CommandHandler("reset", reset))
-    
-from keep_alive import keep_alive
-
-# Запуск мини-сервера Replit
-keep_alive()
-
-    app.run_polling()
-else:
-    print("❗ Ошибка: Переменная BOT_TOKEN не установлена.")
+app.run_polling()
